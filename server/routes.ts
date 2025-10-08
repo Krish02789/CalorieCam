@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 import fs from "fs";
 import path from "path";
 import { insertFoodAnalysisSchema } from "@shared/schema";
@@ -22,9 +22,9 @@ const upload = multer({
   }
 });
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY || "default_key" 
+// Use Google Gemini (FREE API)
+const ai = new GoogleGenAI({ 
+  apiKey: process.env.GEMINI_API_KEY || "default_key" 
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -42,39 +42,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const imagePath = req.file.path;
       
-      // Convert image to base64
+      // Read image bytes
       const imageBuffer = fs.readFileSync(imagePath);
       const base64Image = imageBuffer.toString('base64');
 
-      // Analyze image with OpenAI Vision
-      const visionResponse = await openai.chat.completions.create({
-        model: "gpt-5",
-        messages: [
+      // Analyze image with Google Gemini (FREE)
+      const systemPrompt = `You are a nutrition expert AI that analyzes food images. Analyze the food in the image and provide detailed nutritional information. Respond with JSON in this exact format: { "detectedFood": string, "confidence": number (0-1), "totalCalories": number, "protein": number, "carbs": number, "fats": number, "fiber": number, "sugar": number, "sodium": number, "cholesterol": number, "ingredients": string[], "portionSize": string }`;
+
+      const visionResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              detectedFood: { type: "string" },
+              confidence: { type: "number" },
+              totalCalories: { type: "number" },
+              protein: { type: "number" },
+              carbs: { type: "number" },
+              fats: { type: "number" },
+              fiber: { type: "number" },
+              sugar: { type: "number" },
+              sodium: { type: "number" },
+              cholesterol: { type: "number" },
+              ingredients: { type: "array", items: { type: "string" } },
+              portionSize: { type: "string" }
+            },
+            required: ["detectedFood", "confidence", "totalCalories", "protein", "carbs", "fats", "portionSize"]
+          }
+        },
+        contents: [
           {
-            role: "system",
-            content: "You are a nutrition expert AI that analyzes food images. Analyze the food in the image and provide detailed nutritional information. Respond with JSON in this exact format: { 'detectedFood': string, 'confidence': number (0-1), 'totalCalories': number, 'protein': number, 'carbs': number, 'fats': number, 'fiber': number, 'sugar': number, 'sodium': number, 'cholesterol': number, 'ingredients': string[], 'portionSize': string }"
+            inlineData: {
+              data: base64Image,
+              mimeType: req.file.mimetype
+            }
           },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Analyze this food image and provide detailed nutritional information. Be as accurate as possible with portion size estimation and nutritional values."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`
-                }
-              }
-            ],
-          },
-        ],
-        response_format: { type: "json_object" },
-        max_completion_tokens: 2048,
+          "Analyze this food image and provide detailed nutritional information. Be as accurate as possible with portion size estimation and nutritional values."
+        ]
       });
 
-      const analysisResult = JSON.parse(visionResponse.choices[0].message.content || "{}");
+      const analysisResult = JSON.parse(visionResponse.text || "{}");
 
       // Validate and save the analysis
       const analysisData = {
