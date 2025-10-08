@@ -6,7 +6,7 @@ import { Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface UploadZoneProps {
-  onImageUploaded: (imageUrl: string) => void;
+  onImageUploaded: (imageUrl: string, file: File) => void;
 }
 
 export function UploadZone({ onImageUploaded }: UploadZoneProps) {
@@ -27,7 +27,7 @@ export function UploadZone({ onImageUploaded }: UploadZoneProps) {
 
       // Create image URL for preview
       const imageUrl = URL.createObjectURL(file);
-      onImageUploaded(imageUrl);
+      onImageUploaded(imageUrl, file);
     }
   }, [onImageUploaded, toast]);
 

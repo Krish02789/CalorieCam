@@ -4,25 +4,58 @@ import { Card, CardContent } from "@/components/ui/card";
 import { UploadZone } from "@/components/upload-zone";
 import { NutritionResults } from "@/components/nutrition-results";
 import { BarChart3, Camera, Smartphone, Zap, CheckCircle, Info } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import type { FoodAnalysis } from "@shared/schema";
 
 export default function Home() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [analysisResults, setAnalysisResults] = useState<FoodAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { toast } = useToast();
 
-  const handleImageUploaded = (imageUrl: string) => {
+  const handleImageUploaded = (imageUrl: string, file: File) => {
     setUploadedImage(imageUrl);
+    setUploadedFile(file);
     setAnalysisResults(null);
   };
 
-  const handleAnalysisComplete = (results: FoodAnalysis) => {
-    setAnalysisResults(results);
-    setIsAnalyzing(false);
+  const analyzeFood = async () => {
+    if (!uploadedFile) return;
+
+    setIsAnalyzing(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('image', uploadedFile);
+
+      const response = await fetch('/api/analyze-food', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to analyze food');
+      }
+
+      const results = await response.json();
+      setAnalysisResults(results);
+    } catch (error) {
+      console.error('Error analyzing food:', error);
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyze food. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleNewAnalysis = () => {
     setUploadedImage(null);
+    setUploadedFile(null);
     setAnalysisResults(null);
     setIsAnalyzing(false);
   };
@@ -150,7 +183,7 @@ export default function Home() {
                     <div className="p-6 border-t border-border">
                       <Button 
                         className="w-full gradient-bg text-primary-foreground hover:opacity-90"
-                        onClick={() => setIsAnalyzing(true)}
+                        onClick={analyzeFood}
                         data-testid="button-analyze"
                       >
                         <Zap className="w-5 h-5 mr-2" />
